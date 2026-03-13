@@ -1,0 +1,62 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model CodeReview {
+  id          String   @id @default(cuid())
+  codeContent String
+  language    String
+  fileName    String?
+  
+  // Review results
+  summary          String?
+  positiveAspects  String?   // JSON array of strings
+  qualityScore     Float?
+  totalLines  Int?
+  passed      Boolean  @default(false)
+  
+  // Counts
+  criticalCount Int     @default(0)
+  errorCount    Int     @default(0)
+  warningCount  Int     @default(0)
+  infoCount     Int     @default(0)
+  
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  
+  findings   CodeReviewFinding[]
+}
+
+model CodeReviewFinding {
+  id            String   @id @default(cuid())
+  reviewId      String
+  review        CodeReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  
+  ruleId        String
+  severity      String    // critical, error, warning, info, hint
+  category      String    // bug, security, performance, maintainability, style, testing
+  message       String
+  
+  lineStart     Int?
+  lineEnd       Int?
+  columnStart   Int?
+  columnEnd     Int?
+  codeSnippet   String?
+  
+  suggestion    String?
+  explanation   String?
+  documentation String?
+  
+  autoFixable   Boolean  @default(false)
+  fixed         Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+}

@@ -1,0 +1,291 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  --font-heading: 'Space Grotesk', sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* Mediagenix AIR brand colors */
+  --color-cobalt: #3805E3;
+  --color-cobalt-mid: #5B33F0;
+  --color-neon-green: #B3FC4F;
+  --color-teal: #2DD4BF;
+  --color-amber: #F59E0B;
+}
+
+/* ═══════════════════════════════════════════════════════
+   MEDIAGENIX AIR PLATFORM — Dark-first design system
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  --radius: 10px;
+
+  /* Surface System — deep dark palette */
+  --background: #0B0F19;
+  --foreground: #F0F4FF;
+  --card: #111827;
+  --card-foreground: #F0F4FF;
+  --popover: #1C2333;
+  --popover-foreground: #F0F4FF;
+
+  /* Brand — cobalt purple primary */
+  --primary: #3805E3;
+  --primary-foreground: #FFFFFF;
+
+  /* Secondary — raised surface */
+  --secondary: #1C2333;
+  --secondary-foreground: #F0F4FF;
+
+  /* Muted — subdued */
+  --muted: #1C2333;
+  --muted-foreground: #5E6F8A;
+
+  /* Accent — cobalt hover */
+  --accent: #232E45;
+  --accent-foreground: #F0F4FF;
+
+  /* Destructive — red */
+  --destructive: #EF4444;
+
+  /* Borders & inputs */
+  --border: #1F2D45;
+  --input: #1C2333;
+  --ring: #5B33F0;
+
+  /* Charts — operational palette */
+  --chart-1: #3805E3;
+  --chart-2: #2DD4BF;
+  --chart-3: #F59E0B;
+  --chart-4: #A78BFA;
+  --chart-5: #F87171;
+
+  /* Sidebar */
+  --sidebar: #111827;
+  --sidebar-foreground: #9BAAC4;
+  --sidebar-primary: #3805E3;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #232E45;
+  --sidebar-accent-foreground: #F0F4FF;
+  --sidebar-border: #1F2D45;
+  --sidebar-ring: #5B33F0;
+}
+
+/* Light mode — inverted for accessibility */
+.light,
+:root:not(.dark) .light-override {
+  --background: #F8FAFF;
+  --foreground: #0B0F19;
+  --card: #FFFFFF;
+  --card-foreground: #0B0F19;
+  --popover: #FFFFFF;
+  --popover-foreground: #0B0F19;
+  --primary: #3805E3;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EEF1F8;
+  --secondary-foreground: #0B0F19;
+  --muted: #EEF1F8;
+  --muted-foreground: #5E6F8A;
+  --accent: #E8ECF5;
+  --accent-foreground: #0B0F19;
+  --destructive: #EF4444;
+  --border: #D4DAE8;
+  --input: #E8ECF5;
+  --ring: #3805E3;
+  --chart-1: #3805E3;
+  --chart-2: #0D9488;
+  --chart-3: #D97706;
+  --chart-4: #7C3AED;
+  --chart-5: #DC2626;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #5E6F8A;
+  --sidebar-primary: #3805E3;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EEF1F8;
+  --sidebar-accent-foreground: #0B0F19;
+  --sidebar-border: #D4DAE8;
+  --sidebar-ring: #3805E3;
+}
+
+/* Dark mode (default — Mediagenix AIR is dark-first) */
+.dark {
+  --background: #0B0F19;
+  --foreground: #F0F4FF;
+  --card: #111827;
+  --card-foreground: #F0F4FF;
+  --popover: #1C2333;
+  --popover-foreground: #F0F4FF;
+  --primary: #5B33F0;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1C2333;
+  --secondary-foreground: #F0F4FF;
+  --muted: #1C2333;
+  --muted-foreground: #5E6F8A;
+  --accent: #232E45;
+  --accent-foreground: #F0F4FF;
+  --destructive: #F87171;
+  --border: #1F2D45;
+  --input: #1C2333;
+  --ring: #5B33F0;
+  --chart-1: #5B33F0;
+  --chart-2: #2DD4BF;
+  --chart-3: #F59E0B;
+  --chart-4: #A78BFA;
+  --chart-5: #F87171;
+  --sidebar: #111827;
+  --sidebar-foreground: #9BAAC4;
+  --sidebar-primary: #5B33F0;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #232E45;
+  --sidebar-accent-foreground: #F0F4FF;
+  --sidebar-border: #1F2D45;
+  --sidebar-ring: #5B33F0;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar matching dark theme */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--background); }
+  ::-webkit-scrollbar-thumb { background: #2E3F5C; border-radius: 3px; }
+
+  /* Headings use Space Grotesk */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Code elements use JetBrains Mono */
+  code, pre, kbd, .font-mono {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace !important;
+  }
+}
+
+/* ── Mediagenix AIR Component Overrides ── */
+
+/* Primary button glow effect */
+.bg-primary:hover {
+  box-shadow: 0 4px 14px rgba(56, 5, 227, 0.35);
+}
+
+/* Severity colors — mapped to AIR operational palette */
+.text-red-500 { color: #F87171 !important; }
+.text-orange-500 { color: #F59E0B !important; }
+.text-yellow-500 { color: #F59E0B !important; }
+.text-blue-500 { color: #60A5FA !important; }
+.text-green-500 { color: #2DD4BF !important; }
+.text-green-600 { color: #2DD4BF !important; }
+.text-green-400 { color: #4ADE80 !important; }
+.text-purple-500 { color: #A78BFA !important; }
+
+.bg-red-500 { background-color: #F87171 !important; }
+.bg-orange-500 { background-color: #F59E0B !important; }
+.bg-yellow-500 { background-color: #F59E0B !important; }
+.bg-blue-500 { background-color: #60A5FA !important; }
+.bg-green-500 { background-color: #2DD4BF !important; }
+
+/* Severity background tints */
+.bg-red-500\/10 { background-color: rgba(248, 113, 113, 0.1) !important; }
+.bg-orange-500\/10 { background-color: rgba(245, 158, 11, 0.1) !important; }
+.bg-yellow-500\/10 { background-color: rgba(245, 158, 11, 0.1) !important; }
+.bg-blue-500\/10 { background-color: rgba(96, 165, 250, 0.1) !important; }
+.bg-green-500\/10 { background-color: rgba(45, 212, 191, 0.1) !important; }
+.bg-green-500\/5 { background-color: rgba(45, 212, 191, 0.05) !important; }
+
+/* Border tints */
+.border-red-500\/30 { border-color: rgba(248, 113, 113, 0.3) !important; }
+.border-orange-500\/30 { border-color: rgba(245, 158, 11, 0.3) !important; }
+.border-yellow-500\/30 { border-color: rgba(245, 158, 11, 0.3) !important; }
+.border-blue-500\/30 { border-color: rgba(96, 165, 250, 0.3) !important; }
+.border-green-500\/30 { border-color: rgba(45, 212, 191, 0.3) !important; }
+
+/* Focus ring uses cobalt */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(56, 5, 227, 0.15);
+}
+
+/* Glow effects for interactive elements */
+.shadow-glow-cobalt { box-shadow: 0 0 20px rgba(56, 5, 227, 0.3), 0 0 40px rgba(56, 5, 227, 0.1); }
+.shadow-glow-teal { box-shadow: 0 0 20px rgba(45, 212, 191, 0.3), 0 0 40px rgba(45, 212, 191, 0.1); }
+.shadow-glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3), 0 0 40px rgba(245, 158, 11, 0.1); }
+
+/* Badge pill style from AIR */
+[data-slot="badge"] {
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  letter-spacing: 0.3px;
+}
+
+/* Textarea dark styling */
+textarea {
+  background: #1C2333 !important;
+  border-color: #1F2D45 !important;
+  color: #F0F4FF !important;
+}
+textarea:focus {
+  border-color: #5B33F0 !important;
+  box-shadow: 0 0 0 3px rgba(56, 5, 227, 0.15) !important;
+}
+
+.dark textarea {
+  background: #1C2333 !important;
+}
+
+/* Input dark styling */
+input[type="text"], input[type="checkbox"] {
+  background: #1C2333;
+  border-color: #1F2D45;
+  color: #F0F4FF;
+}
+input[type="text"]:focus {
+  border-color: #5B33F0;
+  box-shadow: 0 0 0 3px rgba(56, 5, 227, 0.15);
+}
