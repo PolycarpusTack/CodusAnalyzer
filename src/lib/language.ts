@@ -14,6 +14,8 @@ const EXTENSION_MAP: Record<string, string> = {
   '.cs': 'csharp',
   '.php': 'php',
   '.rb': 'ruby',
+  '.st': 'smalltalk',
+  '.cs2': 'smalltalk',  // VisualWorks Smalltalk chunk format
 };
 
 export function detectLanguage(filename: string): string | null {

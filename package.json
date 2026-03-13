@@ -12,9 +12,15 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "bench": "npx tsx benchmarks/runner.ts",
+    "bench:full": "npx tsx benchmarks/runner.ts --mode=combined",
+    "bench:json": "npx tsx benchmarks/runner.ts --json",
+    "bench:report": "npx tsx benchmarks/runner.ts --json > benchmarks/results/latest.json && npx tsx benchmarks/reporter.ts benchmarks/results/latest.json",
+    "build:grammars": "npx tsx scripts/build-grammars.ts"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -77,8 +83,10 @@
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
+    "tree-sitter-wasms": "^0.1.13",
     "uuid": "^11.1.0",
     "vaul": "^1.1.2",
+    "web-tree-sitter": "^0.26.6",
     "z-ai-web-dev-sdk": "^0.0.17",
     "zod": "^4.0.2",
     "zustand": "^5.0.6"

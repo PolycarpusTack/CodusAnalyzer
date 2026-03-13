@@ -1,16 +1,6 @@
-export interface StaticFinding {
-  ruleId: string;
-  severity: string;
-  category: string;
-  message: string;
-  lineStart: number;
-  lineEnd: number;
-  codeSnippet: string;
-  suggestion: string;
-  explanation: string;
-  documentation: string;
-  autoFixable: boolean;
-}
+import type { StaticFinding } from './analysis/types';
+
+export type { StaticFinding };
 
 export interface CustomRule {
   id: string;

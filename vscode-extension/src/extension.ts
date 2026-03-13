@@ -36,22 +36,76 @@ const LANGUAGE_MAP: Record<string, string> = {
   csharp: 'csharp',
   php: 'php',
   ruby: 'ruby',
+  smalltalk: 'smalltalk',
 };
 
 const diagnosticCollection = vscode.languages.createDiagnosticCollection('codeReviewAir');
 let statusBarItem: vscode.StatusBarItem;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
+class AIRCodeActionProvider implements vscode.CodeActionProvider {
+  private diagnosticFindings = new Map<string, Finding[]>();
+
+  setFindings(uri: string, findings: Finding[]) {
+    this.diagnosticFindings.set(uri, findings);
+  }
+
+  provideCodeActions(
+    document: vscode.TextDocument,
+    _range: vscode.Range | vscode.Selection,
+    context: vscode.CodeActionContext,
+  ): vscode.CodeAction[] {
+    const findings = this.diagnosticFindings.get(document.uri.toString()) || [];
+    const actions: vscode.CodeAction[] = [];
+
+    for (const diagnostic of context.diagnostics) {
+      if (diagnostic.source !== 'AIR') continue;
+
+      const finding = findings.find(
+        (f) =>
+          f.lineStart &&
+          diagnostic.range.start.line === f.lineStart - 1 &&
+          f.suggestion
+      );
+
+      if (finding?.suggestion) {
+        const fix = new vscode.CodeAction(
+          `AIR: ${finding.suggestion.substring(0, 80)}`,
+          vscode.CodeActionKind.QuickFix
+        );
+        fix.diagnostics = [diagnostic];
+        fix.isPreferred = true;
+
+        fix.edit = new vscode.WorkspaceEdit();
+        const line = document.lineAt(diagnostic.range.start.line);
+        fix.edit.replace(document.uri, line.range, finding.suggestion);
+
+        actions.push(fix);
+      }
+    }
+
+    return actions;
+  }
+}
+
+const codeActionProvider = new AIRCodeActionProvider();
+
 export function activate(context: vscode.ExtensionContext) {
-  // Status bar item
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = 'codeReviewAir.reviewFile';
-  statusBarItem.text = '$(shield) AIR';
-  statusBarItem.tooltip = 'AI Code Review';
+  statusBarItem.text = '$(shield) AIR: Ready';
+  statusBarItem.tooltip = 'AI Code Review — Click to review current file';
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
-  // Register commands
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file' },
+      codeActionProvider,
+      { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+    )
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('codeReviewAir.reviewFile', () => reviewFile()),
     vscode.commands.registerCommand('codeReviewAir.reviewSelection', () => reviewSelection()),
@@ -126,13 +180,19 @@ async function performReview(code: string, language: string, uri: vscode.Uri, li
   const config = vscode.workspace.getConfiguration('codeReviewAir');
   const serverUrl = config.get<string>('serverUrl') || 'http://localhost:3000';
   const preset = config.get<string>('preset') || 'full';
+  const apiKey = config.get<string>('apiKey') || '';
 
   statusBarItem.text = '$(loading~spin) AIR: Reviewing...';
 
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch(`${serverUrl}/api/review`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ code, language, preset }),
     });
 
@@ -147,13 +207,13 @@ async function performReview(code: string, language: string, uri: vscode.Uri, li
     const icon = result.passed ? '$(check)' : '$(warning)';
     statusBarItem.text = `${icon} AIR: ${result.qualityScore}/100`;
 
-    // Create diagnostics
+    codeActionProvider.setFindings(uri.toString(), result.findings);
     updateDiagnostics(uri, result.findings, lineOffset);
 
     // Show results in WebView
     showResultsPanel(result, uri);
   } catch (err) {
-    statusBarItem.text = '$(error) AIR: Failed';
+    statusBarItem.text = '$(error) AIR: Error';
     const message = err instanceof Error ? err.message : 'Unknown error';
     vscode.window.showErrorMessage(`Code review failed: ${message}`);
   }

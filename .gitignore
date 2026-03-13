@@ -47,12 +47,23 @@ test
 prompt
 
 server.log
+
 # Skills directory
 /skills/
 
 # database
 *.db
 *.db-journal
+
+# tree-sitter WASM grammars (built from npm package)
+/public/grammars/
+
+# benchmark results (except baseline)
+/benchmarks/results/latest.json
+
+# VS Code extension build output
+/vscode-extension/out/
+/vscode-extension/*.vsix
 
 # non-essential directories
 /examples/

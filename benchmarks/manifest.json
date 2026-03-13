@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "description": "CodeAnalyzer detection benchmark fixtures",
+  "fixtures": [
+    {
+      "rule": "sql-injection",
+      "category": "security",
+      "truePositives": [
+        "fixtures/security/sql-injection/tp1.ts",
+        "fixtures/security/sql-injection/tp2.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/security/sql-injection/tn1.ts",
+        "fixtures/security/sql-injection/tn2.ts"
+      ]
+    },
+    {
+      "rule": "eval-usage",
+      "category": "security",
+      "truePositives": [
+        "fixtures/security/eval-usage/tp1.ts",
+        "fixtures/security/eval-usage/tp2.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/security/eval-usage/tn1.ts",
+        "fixtures/security/eval-usage/tn2.ts"
+      ]
+    },
+    {
+      "rule": "hardcoded-secret",
+      "category": "security",
+      "truePositives": [
+        "fixtures/security/hardcoded-secret/tp1.ts",
+        "fixtures/security/hardcoded-secret/tp2.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/security/hardcoded-secret/tn1.ts",
+        "fixtures/security/hardcoded-secret/tn2.ts"
+      ]
+    },
+    {
+      "rule": "xss-innerhtml",
+      "category": "security",
+      "truePositives": [
+        "fixtures/security/xss-innerhtml/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/security/xss-innerhtml/tn1.ts"
+      ]
+    },
+    {
+      "rule": "aws-key",
+      "category": "security",
+      "truePositives": [
+        "fixtures/security/aws-key/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/security/aws-key/tn1.ts"
+      ]
+    },
+    {
+      "rule": "xss-dangerously",
+      "category": "security",
+      "truePositives": [
+        "fixtures/security/xss-dangerously/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/security/xss-dangerously/tn1.ts"
+      ]
+    },
+    {
+      "rule": "n-plus-one",
+      "category": "performance",
+      "truePositives": [
+        "fixtures/performance/n-plus-one/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/performance/n-plus-one/tn1.ts"
+      ]
+    },
+    {
+      "rule": "sync-operation",
+      "category": "performance",
+      "truePositives": [
+        "fixtures/performance/sync-operation/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/performance/sync-operation/tn1.ts"
+      ]
+    },
+    {
+      "rule": "memory-leak",
+      "category": "performance",
+      "truePositives": [
+        "fixtures/performance/memory-leak/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/performance/memory-leak/tn1.ts"
+      ]
+    },
+    {
+      "rule": "any-type",
+      "category": "quality",
+      "truePositives": [
+        "fixtures/quality/any-type/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/quality/any-type/tn1.ts"
+      ]
+    },
+    {
+      "rule": "console-log",
+      "category": "quality",
+      "truePositives": [
+        "fixtures/quality/console-log/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/quality/console-log/tn1.ts"
+      ]
+    },
+    {
+      "rule": "empty-catch",
+      "category": "quality",
+      "truePositives": [
+        "fixtures/quality/empty-catch/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/quality/empty-catch/tn1.ts"
+      ]
+    },
+    {
+      "rule": "var-declaration",
+      "category": "quality",
+      "truePositives": [
+        "fixtures/quality/var-declaration/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/quality/var-declaration/tn1.ts"
+      ]
+    },
+    {
+      "rule": "todo-comment",
+      "category": "quality",
+      "truePositives": [
+        "fixtures/quality/todo-comment/tp1.ts"
+      ],
+      "trueNegatives": [
+        "fixtures/quality/todo-comment/tn1.ts"
+      ]
+    }
+  ]
+}

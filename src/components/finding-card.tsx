@@ -31,6 +31,7 @@ export interface Finding {
   explanation?: string
   documentation?: string
   autoFixable: boolean
+  resolution?: string
 }
 
 export const severityConfig = {
@@ -97,6 +98,11 @@ export function FindingCard({ finding, isExpanded, onToggle }: {
             <p className="mt-2 text-sm font-medium">{finding.message}</p>
           </div>
           <div className="flex items-center gap-2">
+            {finding.resolution && finding.resolution !== 'open' && (
+              <Badge variant="outline" className="text-purple-500 border-purple-500/30 capitalize">
+                {finding.resolution.replace('_', ' ')}
+              </Badge>
+            )}
             {finding.autoFixable && (
               <Badge variant="outline" className="text-green-500 border-green-500/30">
                 Auto-fixable

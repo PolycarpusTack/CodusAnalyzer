@@ -65,6 +65,39 @@ export function exportAsMarkdown(result: ReviewResult, fileName?: string): strin
   return lines.join('\n');
 }
 
+export function exportAsJSON(result: ReviewResult, fileName?: string): string {
+  return JSON.stringify({
+    fileName: fileName || 'untitled',
+    exportedAt: new Date().toISOString(),
+    summary: result.summary,
+    qualityScore: result.qualityScore,
+    passed: result.passed,
+    counts: result.counts,
+    findings: result.findings.map((f) => ({
+      ruleId: f.ruleId,
+      severity: f.severity,
+      category: f.category,
+      message: f.message,
+      lineStart: f.lineStart,
+      lineEnd: f.lineEnd,
+      suggestion: f.suggestion,
+    })),
+  }, null, 2)
+}
+
+export function exportAsCSV(result: ReviewResult): string {
+  const headers = ['Rule ID', 'Severity', 'Category', 'Line', 'Message', 'Suggestion']
+  const rows = result.findings.map((f) => [
+    f.ruleId,
+    f.severity,
+    f.category,
+    f.lineStart || '',
+    `"${(f.message || '').replace(/"/g, '""')}"`,
+    `"${(f.suggestion || '').replace(/"/g, '""')}"`,
+  ])
+  return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+}
+
 export function downloadFile(content: string, filename: string, type = 'text/markdown') {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);

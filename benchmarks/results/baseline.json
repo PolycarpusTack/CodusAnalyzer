@@ -1,0 +1,182 @@
+{
+  "timestamp": "2026-03-13T19:53:40.574Z",
+  "mode": "regex",
+  "totalFixtures": 34,
+  "totalTimeMs": 517.5973369999999,
+  "rules": [
+    {
+      "rule": "sql-injection",
+      "category": "security",
+      "tp": 1,
+      "fp": 1,
+      "tn": 1,
+      "fn": 1,
+      "recall": 0.5,
+      "precision": 0.5,
+      "f1": 0.5,
+      "timeMs": 71.389209
+    },
+    {
+      "rule": "eval-usage",
+      "category": "security",
+      "tp": 2,
+      "fp": 1,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 0.6666666666666666,
+      "f1": 0.8,
+      "timeMs": 45.96746400000001
+    },
+    {
+      "rule": "hardcoded-secret",
+      "category": "security",
+      "tp": 2,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 59.65918800000003
+    },
+    {
+      "rule": "xss-innerhtml",
+      "category": "security",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 35.20265999999998
+    },
+    {
+      "rule": "aws-key",
+      "category": "security",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 34.195040000000006
+    },
+    {
+      "rule": "xss-dangerously",
+      "category": "security",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 31.272684000000027
+    },
+    {
+      "rule": "n-plus-one",
+      "category": "performance",
+      "tp": 0,
+      "fp": 0,
+      "tn": 1,
+      "fn": 1,
+      "recall": 0,
+      "precision": 0,
+      "f1": 0,
+      "timeMs": 29.518137000000024
+    },
+    {
+      "rule": "sync-operation",
+      "category": "performance",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 29.12133099999994
+    },
+    {
+      "rule": "memory-leak",
+      "category": "performance",
+      "tp": 1,
+      "fp": 1,
+      "tn": 0,
+      "fn": 0,
+      "recall": 1,
+      "precision": 0.5,
+      "f1": 0.6666666666666666,
+      "timeMs": 29.598833000000013
+    },
+    {
+      "rule": "any-type",
+      "category": "quality",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 29.76023100000009
+    },
+    {
+      "rule": "console-log",
+      "category": "quality",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 30.21621200000004
+    },
+    {
+      "rule": "empty-catch",
+      "category": "quality",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 29.4769960000001
+    },
+    {
+      "rule": "var-declaration",
+      "category": "quality",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 30.25573899999995
+    },
+    {
+      "rule": "todo-comment",
+      "category": "quality",
+      "tp": 1,
+      "fp": 0,
+      "tn": 1,
+      "fn": 0,
+      "recall": 1,
+      "precision": 1,
+      "f1": 1,
+      "timeMs": 31.628108999999995
+    }
+  ],
+  "summary": {
+    "avgRecall": 0.8928571428571429,
+    "avgPrecision": 0.8333333333333333,
+    "avgF1": 0.8547619047619047,
+    "locsPerSecond": 1673.1152540686278
+  }
+}

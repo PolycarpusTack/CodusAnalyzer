@@ -39,6 +39,7 @@ import {
   ListTodo,
   Bell,
   FolderCog,
+  Search,
 } from 'lucide-react'
 import { FindingCard, severityConfig, categoryIcons } from '@/components/finding-card'
 import type { Finding } from '@/components/finding-card'
@@ -48,7 +49,7 @@ import type { HistoryReview } from '@/components/history-item'
 import { QualityTrend } from '@/components/quality-trend'
 import { ReviewComments } from '@/components/review-comments'
 import { detectLanguage } from '@/lib/language'
-import { exportAsMarkdown, downloadFile } from '@/lib/export'
+import { exportAsMarkdown, exportAsJSON, exportAsCSV, downloadFile } from '@/lib/export'
 import { applyAutoFixes } from '@/lib/autofix'
 import { isGitHubUrl } from '@/lib/github'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -71,6 +72,12 @@ import { TeamDashboard } from '@/components/team-dashboard'
 import { ProjectProfileSelector } from '@/components/project-profile-selector'
 import { NotificationSettings } from '@/components/notification-settings'
 import { JobQueue } from '@/components/job-queue'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { KeyboardShortcuts } from '@/components/keyboard-shortcuts'
+import { GuidedTour } from '@/components/guided-tour'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { toast } from 'sonner'
+import { sendWebhookNotification } from '@/lib/webhook-notify'
 
 interface ReviewResult {
   reviewId?: string
@@ -144,7 +151,6 @@ export default function CodeReviewAgent() {
   const [error, setError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [preset, setPreset] = useState<PresetId>('full')
-  const [copied, setCopied] = useState(false)
   const [fixApplied, setFixApplied] = useState(false)
   const [ruleConfig, setRuleConfig] = useState<RuleConfig>({ security: true, performance: true, maintainability: true, style: true })
   const [showSettings, setShowSettings] = useState(false)
@@ -154,13 +160,33 @@ export default function CodeReviewAgent() {
   const [useMonaco, setUseMonaco] = useState(true)
   const [syntaxResult, setSyntaxResult] = useState<SyntaxAnalysisResult | null>(null)
   const [showAutoFixPreview, setShowAutoFixPreview] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [findingSearch, setFindingSearch] = useState('')
+  const [findingSeverityFilter, setFindingSeverityFilter] = useState<string>('all')
+  const [findingCategoryFilter, setFindingCategoryFilter] = useState<string>('all')
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [resolvedFindings, setResolvedFindings] = useState<Record<string, string>>({})
+  const HISTORY_PAGE_SIZE = 20
 
-  // Keyboard shortcut: Ctrl+Enter to submit review
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && code.trim() && !isLoading) {
         e.preventDefault()
         handleReview()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C' && result) {
+        e.preventDefault()
+        handleCopyMarkdown()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E' && result) {
+        e.preventDefault()
+        handleDownloadReport()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
+        e.preventDefault()
+        handleLoadSample()
       }
     }
     window.addEventListener('keydown', handler)
@@ -273,7 +299,7 @@ export default function CodeReviewAgent() {
   // --- GitHub fetch ---
   const handleGitHubFetch = async () => {
     if (!githubUrl.trim() || !isGitHubUrl(githubUrl)) {
-      setError('Enter a valid GitHub file URL (e.g. https://github.com/owner/repo/blob/main/src/file.ts)')
+      toast.error('Enter a valid GitHub file URL (e.g. https://github.com/owner/repo/blob/main/src/file.ts)')
       return
     }
     setIsLoadingGithub(true)
@@ -292,28 +318,30 @@ export default function CodeReviewAgent() {
       handleFileContent(data.content, data.fileName)
       setGithubUrl('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch from GitHub')
+      toast.error(err instanceof Error ? err.message : 'Failed to fetch from GitHub')
     } finally {
       setIsLoadingGithub(false)
     }
   }
 
   // --- History ---
-  const loadHistory = useCallback(async (force = false) => {
-    if (!force && historyLoaded.current) return
+  const loadHistory = useCallback(async (force = false, page = 1) => {
+    if (!force && historyLoaded.current && page === historyPage) return
     setIsLoadingHistory(true)
     try {
-      const res = await fetch('/api/review?limit=10')
+      const res = await fetch(`/api/review?limit=${HISTORY_PAGE_SIZE}&offset=${(page - 1) * HISTORY_PAGE_SIZE}`)
       if (!res.ok) throw new Error('Failed to load history')
       const data = await res.json()
       setHistory(data.reviews || [])
+      setHistoryTotal(data.total || data.reviews?.length || 0)
+      setHistoryPage(page)
       historyLoaded.current = true
     } catch (err) {
       console.error('Failed to load history:', err)
     } finally {
       setIsLoadingHistory(false)
     }
-  }, [])
+  }, [historyPage, HISTORY_PAGE_SIZE])
 
   // --- Review ---
   const handleReview = async () => {
@@ -352,13 +380,21 @@ export default function CodeReviewAgent() {
             setResult(data)
             setSyntaxResult(analyzeSyntax(code, language))
             loadHistory(true)
+            sendWebhookNotification({
+              fileName: fileName || undefined,
+              language,
+              qualityScore: data.qualityScore,
+              passed: data.passed,
+              findingsCount: data.findings?.length || 0,
+              summary: data.summary || '',
+            }).catch(() => {})
           } else if (evt.event === 'error') {
             throw new Error(evt.data)
           }
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Review failed')
+      toast.error(err instanceof Error ? err.message : 'Review failed')
       setActiveTab('editor')
     } finally {
       setIsLoading(false)
@@ -376,6 +412,7 @@ export default function CodeReviewAgent() {
     setFixApplied(true)
     setResult(null)
     setShowAutoFixPreview(false)
+    toast.success('Auto-fixes applied! Re-run review to verify.')
   }
 
   // --- Export ---
@@ -383,8 +420,7 @@ export default function CodeReviewAgent() {
     if (!result) return
     const md = exportAsMarkdown(result, fileName || undefined)
     await navigator.clipboard.writeText(md)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    toast.success('Report copied to clipboard')
   }
 
   const handleDownloadReport = () => {
@@ -394,13 +430,25 @@ export default function CodeReviewAgent() {
     downloadFile(md, reportName)
   }
 
-  // --- Share ---
+  const handleDownloadJSON = () => {
+    if (!result) return
+    const json = exportAsJSON(result, fileName || undefined)
+    const reportName = fileName ? `${fileName.replace(/\.[^.]+$/, '')}-review.json` : 'code-review.json'
+    downloadFile(json, reportName)
+  }
+
+  const handleDownloadCSV = () => {
+    if (!result) return
+    const csv = exportAsCSV(result)
+    const reportName = fileName ? `${fileName.replace(/\.[^.]+$/, '')}-review.csv` : 'code-review.csv'
+    downloadFile(csv, reportName)
+  }
+
   const handleShare = async () => {
     if (!result?.reviewId) return
     const shareUrl = `${window.location.origin}?review=${result.reviewId}`
     await navigator.clipboard.writeText(shareUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    toast.success('Share link copied to clipboard')
   }
 
   // --- Misc ---
@@ -464,11 +512,29 @@ export default function CodeReviewAgent() {
   }
 
   const autoFixableCount = result?.findings.filter(f => f.autoFixable).length ?? 0
-  const groupedFindings = result?.findings.reduce((acc, finding) => {
+  const filteredFindings = result?.findings.filter(f => {
+    if (findingSeverityFilter !== 'all' && f.severity !== findingSeverityFilter) return false
+    if (findingCategoryFilter !== 'all' && f.category !== findingCategoryFilter) return false
+    if (findingSearch) {
+      const q = findingSearch.toLowerCase()
+      return f.message.toLowerCase().includes(q) ||
+        f.ruleId.toLowerCase().includes(q) ||
+        (f.suggestion?.toLowerCase().includes(q) ?? false)
+    }
+    return true
+  }) || []
+
+  const filteredGroupedFindings = filteredFindings.reduce((acc, finding) => {
     if (!acc[finding.severity]) acc[finding.severity] = []
     acc[finding.severity].push(finding)
     return acc
-  }, {} as Record<string, Finding[]>) || {}
+  }, {} as Record<string, Finding[]>)
+
+  const displayedHistory = history.filter(r => {
+    if (!historySearch) return true
+    const q = historySearch.toLowerCase()
+    return (r.fileName?.toLowerCase().includes(q)) || r.language.toLowerCase().includes(q)
+  })
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-background to-muted/20">
@@ -505,7 +571,7 @@ export default function CodeReviewAgent() {
       {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-4xl grid-cols-7">
+          <TabsList className="grid w-full max-w-4xl grid-cols-7" data-tour="tabs">
             <TabsTrigger value="editor">
               <Code className="h-4 w-4 mr-2" />
               Editor
@@ -543,7 +609,7 @@ export default function CodeReviewAgent() {
                 <Card>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">Code Input</CardTitle>
+                      <CardTitle className="text-lg" data-tour="editor">Code Input</CardTitle>
                       <div className="flex items-center gap-2">
                         <Select value={language} onValueChange={setLanguage}>
                           <SelectTrigger className="w-40">
@@ -559,6 +625,7 @@ export default function CodeReviewAgent() {
                             <SelectItem value="csharp">C#</SelectItem>
                             <SelectItem value="php">PHP</SelectItem>
                             <SelectItem value="ruby">Ruby</SelectItem>
+                            <SelectItem value="smalltalk">Smalltalk</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -639,7 +706,7 @@ export default function CodeReviewAgent() {
                     </div>
 
                     {/* Review preset selector */}
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap" data-tour="presets">
                       {REVIEW_PRESETS.map((p) => {
                         const Icon = p.icon
                         return (
@@ -662,6 +729,7 @@ export default function CodeReviewAgent() {
                         onClick={handleReview}
                         disabled={!code.trim() || isLoading}
                         className="flex-1"
+                        data-tour="review-btn"
                       >
                         {isLoading ? (
                           <>
@@ -691,7 +759,7 @@ export default function CodeReviewAgent() {
                       <Button variant="outline" onClick={handleLoadSample}>
                         Sample
                       </Button>
-                      <Button variant="ghost" onClick={handleClear} disabled={!code}>
+                      <Button variant="ghost" onClick={() => code ? setConfirmClear(true) : undefined} disabled={!code}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -700,12 +768,6 @@ export default function CodeReviewAgent() {
                       <div className="flex items-center gap-2 p-3 rounded-md bg-green-500/10 border border-green-500/30 text-sm text-green-600 dark:text-green-400">
                         <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
                         Auto-fixes applied. Click &quot;Start Review&quot; to re-analyze.
-                      </div>
-                    )}
-                    {error && (
-                      <div className="flex items-center gap-2 p-3 rounded-md bg-red-500/10 border border-red-500/30 text-sm text-red-500">
-                        <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                        {error}
                       </div>
                     )}
                   </CardContent>
@@ -850,23 +912,45 @@ export default function CodeReviewAgent() {
                         ))}
                       </div>
 
-                      {/* Export + Auto-fix buttons */}
+                      {result.findings.length === 0 && (
+                        <div className="text-center py-6 space-y-2">
+                          <div className="text-4xl">&#127881;</div>
+                          <p className="text-lg font-medium text-green-600 dark:text-green-400">Clean code!</p>
+                          <p className="text-sm text-muted-foreground">No issues found. Great work!</p>
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 pt-2 border-t">
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button variant="outline" size="sm" onClick={handleCopyMarkdown}>
-                                {copied ? <CheckCircle2 className="h-4 w-4 mr-1.5 text-green-500" /> : <Copy className="h-4 w-4 mr-1.5" />}
-                                {copied ? 'Copied' : 'Copy Report'}
+                                <Copy className="h-4 w-4 mr-1.5" />
+                                Copy Report
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>Copy review as Markdown</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <Button variant="outline" size="sm" onClick={handleDownloadReport}>
-                          <Download className="h-4 w-4 mr-1.5" />
-                          Download
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Download className="h-4 w-4 mr-1.5" />
+                              Export
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={handleDownloadReport}>
+                              Markdown (.md)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleDownloadJSON}>
+                              JSON (.json)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleDownloadCSV}>
+                              CSV (.csv)
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {result.reviewId && (
                           <Button variant="outline" size="sm" onClick={handleShare}>
                             <Share2 className="h-4 w-4 mr-1.5" />
@@ -919,9 +1003,53 @@ export default function CodeReviewAgent() {
                     </Card>
                   )}
 
-                  {/* Findings by Severity */}
+                  {result.findings.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                          type="text"
+                          placeholder="Search findings..."
+                          value={findingSearch}
+                          onChange={e => setFindingSearch(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 text-sm border rounded-md bg-background"
+                        />
+                      </div>
+                      <Select value={findingSeverityFilter} onValueChange={setFindingSeverityFilter}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Severity" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Severity</SelectItem>
+                          <SelectItem value="critical">Critical</SelectItem>
+                          <SelectItem value="error">Error</SelectItem>
+                          <SelectItem value="warning">Warning</SelectItem>
+                          <SelectItem value="info">Info</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={findingCategoryFilter} onValueChange={setFindingCategoryFilter}>
+                        <SelectTrigger className="w-[160px]">
+                          <SelectValue placeholder="Category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Categories</SelectItem>
+                          <SelectItem value="security">Security</SelectItem>
+                          <SelectItem value="performance">Performance</SelectItem>
+                          <SelectItem value="maintainability">Maintainability</SelectItem>
+                          <SelectItem value="style">Style</SelectItem>
+                          <SelectItem value="bug">Bug</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {(findingSearch || findingSeverityFilter !== 'all' || findingCategoryFilter !== 'all') && (
+                        <Button variant="ghost" size="sm" onClick={() => { setFindingSearch(''); setFindingSeverityFilter('all'); setFindingCategoryFilter('all') }}>
+                          Clear filters
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
                   {(['critical', 'error', 'warning', 'info'] as const).map((severity) => {
-                    const findings = groupedFindings[severity] || []
+                    const findings = filteredGroupedFindings[severity] || []
                     if (findings.length === 0) return null
                     return (
                       <Card key={severity}>
@@ -965,6 +1093,13 @@ export default function CodeReviewAgent() {
                       </Card>
                     )
                   })}
+
+                  {filteredFindings.length === 0 && result.findings.length > 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No findings match your filters</p>
+                    </div>
+                  )}
 
                   {/* Testing Suggestions */}
                   {result.testingSuggestions.length > 0 && (
@@ -1017,6 +1152,10 @@ export default function CodeReviewAgent() {
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Auto-fixable</span>
                           <span className="font-medium">{autoFixableCount}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Resolved</span>
+                          <span className="font-medium">{Object.keys(resolvedFindings).length}</span>
                         </div>
                       </div>
                     </CardContent>
@@ -1099,26 +1238,71 @@ export default function CodeReviewAgent() {
                 <CardDescription>Your recent code reviews</CardDescription>
               </CardHeader>
               <CardContent>
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search by filename or language..."
+                    value={historySearch}
+                    onChange={e => setHistorySearch(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border rounded-md bg-background"
+                  />
+                </div>
                 {isLoadingHistory ? (
                   <HistorySkeleton />
                 ) : history.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No review history yet</p>
-                    <p className="text-sm">Your reviewed code will appear here</p>
+                  <div className="text-center py-8 text-muted-foreground space-y-3">
+                    <History className="h-12 w-12 mx-auto opacity-50" />
+                    <p className="font-medium">No review history yet</p>
+                    <p className="text-sm">Run your first code review to see results here.</p>
+                    <Button variant="outline" size="sm" onClick={() => setActiveTab('editor')}>
+                      Go to Editor
+                    </Button>
                   </div>
                 ) : (
-                  <ScrollArea className="h-[500px] pr-4">
-                    <div className="space-y-3">
-                      {history.map((review) => (
-                        <HistoryItem
-                          key={review.id}
-                          review={review}
-                          onSelect={() => handleSelectHistory(review)}
-                        />
-                      ))}
-                    </div>
-                  </ScrollArea>
+                  <>
+                    <ScrollArea className="h-[500px] pr-4">
+                      <div className="space-y-3">
+                        {displayedHistory.map((review) => (
+                          <HistoryItem
+                            key={review.id}
+                            review={review}
+                            onSelect={() => handleSelectHistory(review)}
+                          />
+                        ))}
+                        {displayedHistory.length === 0 && historySearch && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No reviews match your search</p>
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                    {historyTotal > HISTORY_PAGE_SIZE && (
+                      <div className="flex items-center justify-between pt-4 border-t mt-4">
+                        <span className="text-sm text-muted-foreground">
+                          Page {historyPage} of {Math.ceil(historyTotal / HISTORY_PAGE_SIZE)}
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={historyPage <= 1}
+                            onClick={() => loadHistory(true, historyPage - 1)}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={historyPage >= Math.ceil(historyTotal / HISTORY_PAGE_SIZE)}
+                            onClick={() => loadHistory(true, historyPage + 1)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -1210,6 +1394,17 @@ export default function CodeReviewAgent() {
           </div>
         </div>
       </footer>
+
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="Clear editor?"
+        description="This will remove all code and review results. This action cannot be undone."
+        confirmLabel="Clear"
+        onConfirm={() => { handleClear(); setConfirmClear(false) }}
+      />
+      <KeyboardShortcuts />
+      <GuidedTour />
     </div>
   )
 }
