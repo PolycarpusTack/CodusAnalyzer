@@ -32,6 +32,13 @@ import {
   FileCode,
   Github,
   Share2,
+  GitPullRequest,
+  Pencil,
+  BarChart3,
+  LayoutDashboard,
+  ListTodo,
+  Bell,
+  FolderCog,
 } from 'lucide-react'
 import { FindingCard, severityConfig, categoryIcons } from '@/components/finding-card'
 import type { Finding } from '@/components/finding-card'
@@ -47,6 +54,23 @@ import { isGitHubUrl } from '@/lib/github'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { ReviewSkeleton, HistorySkeleton } from '@/components/loading-skeleton'
 import { loadRuleConfig, saveRuleConfig, type RuleConfig } from '@/lib/rule-config'
+import { CodeEditor } from '@/components/code-editor'
+import { FindingResolution } from '@/components/finding-resolution'
+import { ReviewComparison } from '@/components/review-comparison'
+import { RuleEditor } from '@/components/rule-editor'
+import { PromptEditor } from '@/components/prompt-editor'
+import { loadCustomRules, runCustomRules } from '@/lib/custom-rules'
+import { parseSSE } from '@/lib/streaming'
+import { loadCustomPrompt } from '@/lib/prompt-config'
+import { SyntaxReport } from '@/components/syntax-report'
+import { analyzeSyntax, type SyntaxAnalysisResult } from '@/lib/syntax-analysis'
+import { DiffViewer } from '@/components/diff-viewer'
+import { AutoFixPreview } from '@/components/auto-fix-preview'
+import { SeverityCalibrator } from '@/components/severity-calibrator'
+import { TeamDashboard } from '@/components/team-dashboard'
+import { ProjectProfileSelector } from '@/components/project-profile-selector'
+import { NotificationSettings } from '@/components/notification-settings'
+import { JobQueue } from '@/components/job-queue'
 
 interface ReviewResult {
   reviewId?: string
@@ -126,6 +150,10 @@ export default function CodeReviewAgent() {
   const [showSettings, setShowSettings] = useState(false)
   const [githubUrl, setGithubUrl] = useState('')
   const [isLoadingGithub, setIsLoadingGithub] = useState(false)
+  const [streamStatus, setStreamStatus] = useState<string | null>(null)
+  const [useMonaco, setUseMonaco] = useState(true)
+  const [syntaxResult, setSyntaxResult] = useState<SyntaxAnalysisResult | null>(null)
+  const [showAutoFixPreview, setShowAutoFixPreview] = useState(false)
 
   // Keyboard shortcut: Ctrl+Enter to submit review
   useEffect(() => {
@@ -295,34 +323,59 @@ export default function CodeReviewAgent() {
     setFixApplied(false)
     setResult(null)
     setActiveTab('results')
+    setStreamStatus('Starting review...')
     try {
-      const res = await fetch('/api/review', {
+      const customPrompt = loadCustomPrompt()
+      const res = await fetch('/api/review/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, language, fileName, preset, enabledCategories: ruleConfig, saveHistory: true })
+        body: JSON.stringify({ code, language, fileName, preset, enabledCategories: ruleConfig, customPrompt, saveHistory: true })
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || `Review failed (${res.status})`)
       }
-      const data = await res.json()
-      setResult(data)
-      setActiveTab('results')
-      loadHistory(true)
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response stream')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const events = parseSSE(buffer)
+        buffer = ''
+        for (const evt of events) {
+          if (evt.event === 'status') setStreamStatus(evt.data)
+          else if (evt.event === 'result') {
+            const data = JSON.parse(evt.data)
+            setResult(data)
+            setSyntaxResult(analyzeSyntax(code, language))
+            loadHistory(true)
+          } else if (evt.event === 'error') {
+            throw new Error(evt.data)
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Review failed')
+      setActiveTab('editor')
     } finally {
       setIsLoading(false)
+      setStreamStatus(null)
     }
   }
 
   // --- Auto-fix ---
   const handleAutoFix = () => {
-    const { code: fixed, appliedFixes } = applyAutoFixes(code)
-    if (appliedFixes.length === 0) return
-    setCode(fixed)
+    setShowAutoFixPreview(true)
+  }
+
+  const handleApplyFix = (fixedCode: string) => {
+    setCode(fixedCode)
     setFixApplied(true)
     setResult(null)
+    setShowAutoFixPreview(false)
   }
 
   // --- Export ---
@@ -452,18 +505,34 @@ export default function CodeReviewAgent() {
       {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-4xl grid-cols-7">
             <TabsTrigger value="editor">
               <Code className="h-4 w-4 mr-2" />
               Editor
             </TabsTrigger>
-            <TabsTrigger value="results" disabled={!result}>
+            <TabsTrigger value="results" disabled={!result && !isLoading}>
               <AlertCircle className="h-4 w-4 mr-2" />
               Results
             </TabsTrigger>
             <TabsTrigger value="history" onClick={() => loadHistory()}>
               <History className="h-4 w-4 mr-2" />
               History
+            </TabsTrigger>
+            <TabsTrigger value="compare" onClick={() => loadHistory()}>
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Compare
+            </TabsTrigger>
+            <TabsTrigger value="dashboard" onClick={() => loadHistory()}>
+              <LayoutDashboard className="h-4 w-4 mr-2" />
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="queue">
+              <ListTodo className="h-4 w-4 mr-2" />
+              Queue
+            </TabsTrigger>
+            <TabsTrigger value="tools">
+              <Pencil className="h-4 w-4 mr-2" />
+              Tools
             </TabsTrigger>
           </TabsList>
 
@@ -546,13 +615,24 @@ export default function CodeReviewAgent() {
                           </div>
                         </div>
                       )}
-                      <textarea
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        placeholder="// Paste your code here or drag & drop file(s)..."
-                        className="w-full h-96 p-4 font-mono text-sm border rounded-md bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                        spellCheck={false}
-                      />
+                      {useMonaco ? (
+                        <div className="h-96 rounded-md overflow-hidden border">
+                          <CodeEditor
+                            value={code}
+                            onChange={(v) => setCode(v)}
+                            language={language}
+                            highlights={result?.findings.map(f => ({ line: f.lineStart, severity: f.severity })) || []}
+                          />
+                        </div>
+                      ) : (
+                        <textarea
+                          value={code}
+                          onChange={(e) => setCode(e.target.value)}
+                          placeholder="// Paste your code here or drag & drop file(s)..."
+                          className="w-full h-96 p-4 font-mono text-sm border rounded-md bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                          spellCheck={false}
+                        />
+                      )}
                       <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
                         {code.split('\n').length} lines
                       </div>
@@ -712,7 +792,13 @@ export default function CodeReviewAgent() {
           <TabsContent value="results" className="space-y-4">
             {isLoading && !result && (
               <div className="grid lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-2 space-y-4">
+                  {streamStatus && (
+                    <div className="flex items-center gap-3 p-4 rounded-lg border bg-card">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      <span className="text-sm font-mono">{streamStatus}</span>
+                    </div>
+                  )}
                   <ReviewSkeleton />
                 </div>
                 <div className="space-y-4">
@@ -802,6 +888,15 @@ export default function CodeReviewAgent() {
                     <ReviewComments reviewId={result.reviewId} />
                   )}
 
+                  {/* Auto-fix Preview */}
+                  {showAutoFixPreview && (
+                    <AutoFixPreview
+                      code={code}
+                      onApply={handleApplyFix}
+                      onCancel={() => setShowAutoFixPreview(false)}
+                    />
+                  )}
+
                   {/* Positive Aspects */}
                   {result.positiveAspects.length > 0 && (
                     <Card className="border-green-500/30 bg-green-500/5">
@@ -843,12 +938,27 @@ export default function CodeReviewAgent() {
                         <CardContent>
                           <div className="space-y-3">
                             {findings.map((finding, i) => (
-                              <FindingCard
-                                key={`${finding.ruleId}-${i}`}
-                                finding={finding}
-                                isExpanded={expandedFindings.has(`${finding.ruleId}-${i}`)}
-                                onToggle={() => toggleFinding(`${finding.ruleId}-${i}`)}
-                              />
+                              <div key={`${finding.ruleId}-${i}`} className="space-y-1">
+                                <FindingCard
+                                  finding={finding}
+                                  isExpanded={expandedFindings.has(`${finding.ruleId}-${i}`)}
+                                  onToggle={() => toggleFinding(`${finding.ruleId}-${i}`)}
+                                />
+                                {expandedFindings.has(`${finding.ruleId}-${i}`) && (
+                                  <div className="pl-12 flex items-center gap-3">
+                                    <SeverityCalibrator
+                                      ruleId={finding.ruleId}
+                                      currentSeverity={finding.severity}
+                                    />
+                                    {result.reviewId && (
+                                      <FindingResolution
+                                        findingId={finding.ruleId}
+                                        reviewId={result.reviewId}
+                                      />
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             ))}
                           </div>
                         </CardContent>
@@ -939,10 +1049,15 @@ export default function CodeReviewAgent() {
                     </CardContent>
                   </Card>
 
+                  {syntaxResult && (
+                    <SyntaxReport result={syntaxResult} />
+                  )}
+
                   <Button
                     className="w-full"
                     onClick={() => {
                       setResult(null)
+                      setSyntaxResult(null)
                       setActiveTab('editor')
                     }}
                   >
@@ -1007,6 +1122,76 @@ export default function CodeReviewAgent() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Compare Tab */}
+          <TabsContent value="compare" className="space-y-4">
+            <ReviewComparison reviews={history} />
+          </TabsContent>
+
+          {/* Dashboard Tab */}
+          <TabsContent value="dashboard" className="space-y-4">
+            <TeamDashboard reviews={history.map(r => ({
+              qualityScore: r.qualityScore,
+              passed: r.passed,
+              criticalCount: r.criticalCount,
+              errorCount: r.errorCount,
+              warningCount: r.warningCount,
+              infoCount: r.infoCount,
+              language: r.language,
+              createdAt: r.createdAt,
+              fileName: r.fileName,
+            }))} />
+          </TabsContent>
+
+          {/* Queue Tab */}
+          <TabsContent value="queue" className="space-y-4">
+            <JobQueue onViewResult={(jobResult) => {
+              setResult(jobResult)
+              setActiveTab('results')
+            }} />
+          </TabsContent>
+
+          {/* Tools Tab */}
+          <TabsContent value="tools" className="space-y-6">
+            <div className="grid lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Pencil className="h-5 w-5" />
+                    Custom Rules
+                  </CardTitle>
+                  <CardDescription>Create regex-based rules for your codebase</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RuleEditor />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    AI Prompt
+                  </CardTitle>
+                  <CardDescription>Customize the AI reviewer behavior</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <PromptEditor />
+                </CardContent>
+              </Card>
+            </div>
+            <div className="grid lg:grid-cols-2 gap-6">
+              <ProjectProfileSelector
+                currentPreset={preset}
+                currentRuleConfig={ruleConfig}
+                onApply={(newRuleConfig, newPreset) => {
+                  setRuleConfig(newRuleConfig)
+                  saveRuleConfig(newRuleConfig)
+                  setPreset(newPreset as PresetId)
+                }}
+              />
+              <NotificationSettings />
+            </div>
           </TabsContent>
         </Tabs>
       </main>

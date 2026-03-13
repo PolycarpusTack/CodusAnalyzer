@@ -57,6 +57,9 @@ model CodeReviewFinding {
   
   autoFixable   Boolean  @default(false)
   fixed         Boolean  @default(false)
-  
+
+  resolution    String   @default("open")  // open, fixed, wont_fix, false_positive
+  resolvedAt    DateTime?
+
   createdAt     DateTime @default(now())
 }

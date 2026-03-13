@@ -5,9 +5,13 @@ import { logger } from '@/lib/logger';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { reviewCache } from '@/lib/cache';
+import { createStreamController } from '@/lib/streaming';
+
+// ---------------------------------------------------------------------------
+// Constants & types (mirrored from ../route.ts since they are not exported)
+// ---------------------------------------------------------------------------
 
 const MAX_CODE_LENGTH = 50_000;
-const MAX_LIMIT = 100;
 
 interface StaticFinding {
   ruleId: string;
@@ -91,13 +95,15 @@ interface PatternRule {
   documentation: string;
 }
 
-// Security patterns to check
+// ---------------------------------------------------------------------------
+// Pattern rules
+// ---------------------------------------------------------------------------
+
 const SECURITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'sql-injection',
     pattern: /(execute\s*\(\s*["'].*\+|query\s*\(\s*["'].*\+|SELECT.*WHERE.*\+|db\.query\s*\(\s*["'].*\$\{)/gi,
-    severity: 'critical',
-    category: 'security',
+    severity: 'critical', category: 'security',
     message: 'Potential SQL injection vulnerability detected',
     explanation: 'SQL injection allows attackers to execute arbitrary SQL commands by manipulating input data.',
     suggestion: 'Use parameterized queries instead of string concatenation.',
@@ -106,8 +112,7 @@ const SECURITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'xss-innerhtml',
     pattern: /innerHTML\s*=\s*[^;]+\+/gi,
-    severity: 'critical',
-    category: 'security',
+    severity: 'critical', category: 'security',
     message: 'XSS vulnerability: Dynamic innerHTML assignment detected',
     explanation: 'Direct innerHTML assignment with dynamic content can lead to Cross-Site Scripting (XSS) attacks.',
     suggestion: 'Use textContent instead, or sanitize HTML content before assignment.',
@@ -116,8 +121,7 @@ const SECURITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'xss-dangerously',
     pattern: /dangerouslySetInnerHTML/gi,
-    severity: 'warning',
-    category: 'security',
+    severity: 'warning', category: 'security',
     message: 'React dangerouslySetInnerHTML detected',
     explanation: 'dangerouslySetInnerHTML can expose your application to XSS attacks if not used carefully.',
     suggestion: 'Ensure content is properly sanitized before using dangerouslySetInnerHTML.',
@@ -126,8 +130,7 @@ const SECURITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'eval-usage',
     pattern: /\beval\s*\(/gi,
-    severity: 'critical',
-    category: 'security',
+    severity: 'critical', category: 'security',
     message: 'eval() function usage detected',
     explanation: 'eval() can execute arbitrary code and is a major security risk.',
     suggestion: 'Avoid eval() and use safer alternatives like JSON.parse() for JSON data.',
@@ -136,8 +139,7 @@ const SECURITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'hardcoded-secret',
     pattern: /(password|secret|api[_-]?key|token)\s*[=:]\s*["'][^"']+["']/gi,
-    severity: 'critical',
-    category: 'security',
+    severity: 'critical', category: 'security',
     message: 'Hardcoded secret or credential detected',
     explanation: 'Secrets in code can be exposed through version control, logs, or error messages.',
     suggestion: 'Use environment variables or a secret manager for sensitive data.',
@@ -146,8 +148,7 @@ const SECURITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'aws-key',
     pattern: /AKIA[0-9A-Z]{16}/g,
-    severity: 'critical',
-    category: 'security',
+    severity: 'critical', category: 'security',
     message: 'AWS Access Key detected in code',
     explanation: 'AWS access keys should never be hardcoded in source code.',
     suggestion: 'Remove the key immediately and rotate credentials. Use AWS IAM roles or environment variables.',
@@ -155,13 +156,11 @@ const SECURITY_PATTERNS: readonly PatternRule[] = [
   }
 ];
 
-// Performance patterns
 const PERFORMANCE_PATTERNS: readonly PatternRule[] = [
   {
     id: 'n-plus-one',
     pattern: /(?:for\s*\(.*await|forEach\s*\(\s*async|for\s*\(.*\.\w+\s*\(\))/gi,
-    severity: 'warning',
-    category: 'performance',
+    severity: 'warning', category: 'performance',
     message: 'Potential N+1 query pattern detected',
     explanation: 'Making database queries inside loops can cause severe performance issues.',
     suggestion: 'Use bulk fetch operations or batch queries instead of per-item queries.',
@@ -170,8 +169,7 @@ const PERFORMANCE_PATTERNS: readonly PatternRule[] = [
   {
     id: 'sync-operation',
     pattern: /readFileSync|writeFileSync|existsSync/gi,
-    severity: 'warning',
-    category: 'performance',
+    severity: 'warning', category: 'performance',
     message: 'Synchronous file operation detected',
     explanation: 'Synchronous operations block the event loop and can degrade performance.',
     suggestion: 'Use asynchronous alternatives (readFile, writeFile, exists) instead.',
@@ -180,8 +178,7 @@ const PERFORMANCE_PATTERNS: readonly PatternRule[] = [
   {
     id: 'memory-leak',
     pattern: /setInterval\s*\([^)]+\)\s*(?!const|let|var)/gi,
-    severity: 'warning',
-    category: 'performance',
+    severity: 'warning', category: 'performance',
     message: 'setInterval without reference detected',
     explanation: 'setInterval without storing reference can cause memory leaks if not cleared.',
     suggestion: 'Store the interval reference and clear it when no longer needed.',
@@ -189,13 +186,11 @@ const PERFORMANCE_PATTERNS: readonly PatternRule[] = [
   }
 ];
 
-// Code quality patterns
 const QUALITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'any-type',
     pattern: /:\s*any\b/gi,
-    severity: 'warning',
-    category: 'maintainability',
+    severity: 'warning', category: 'maintainability',
     message: 'TypeScript any type usage detected',
     explanation: 'Using any defeats TypeScript type checking and can hide potential bugs.',
     suggestion: 'Use specific types or unknown instead of any.',
@@ -204,8 +199,7 @@ const QUALITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'todo-comment',
     pattern: /\/\/\s*(TODO|FIXME|HACK|XXX):/gi,
-    severity: 'info',
-    category: 'maintainability',
+    severity: 'info', category: 'maintainability',
     message: 'TODO/FIXME comment detected',
     explanation: 'Unresolved TODO comments should be tracked and addressed.',
     suggestion: 'Consider creating issues for TODOs or resolving them.',
@@ -214,8 +208,7 @@ const QUALITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'console-log',
     pattern: /console\.(log|debug|info)\s*\(/gi,
-    severity: 'info',
-    category: 'style',
+    severity: 'info', category: 'style',
     message: 'Console logging statement detected',
     explanation: 'Console logs in production code can expose sensitive information and clutter logs.',
     suggestion: 'Remove console logs before deploying or use a proper logging library.',
@@ -224,8 +217,7 @@ const QUALITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'empty-catch',
     pattern: /catch\s*\([^)]*\)\s*\{\s*\}/gi,
-    severity: 'warning',
-    category: 'maintainability',
+    severity: 'warning', category: 'maintainability',
     message: 'Empty catch block detected',
     explanation: 'Empty catch blocks silently swallow errors, making debugging difficult.',
     suggestion: 'Handle the error properly or at least log it.',
@@ -234,8 +226,7 @@ const QUALITY_PATTERNS: readonly PatternRule[] = [
   {
     id: 'var-declaration',
     pattern: /\bvar\s+\w+/gi,
-    severity: 'warning',
-    category: 'style',
+    severity: 'warning', category: 'style',
     message: 'var declaration detected',
     explanation: 'var has function scope and can lead to unexpected behavior.',
     suggestion: 'Use let or const instead for block-scoped variables.',
@@ -250,31 +241,32 @@ interface EnabledCategories {
   style: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Static analysis (same logic as ../route.ts)
+// ---------------------------------------------------------------------------
+
 function runStaticAnalysis(code: string, language: string, enabledCategories?: EnabledCategories) {
   const findings: StaticFinding[] = [];
   const lines = code.split('\n');
 
-  // Build pattern list based on enabled categories
   const patternSets: PatternRule[][] = [];
   if (!enabledCategories || enabledCategories.security) patternSets.push([...SECURITY_PATTERNS]);
   if (!enabledCategories || enabledCategories.performance) patternSets.push([...PERFORMANCE_PATTERNS]);
   if (!enabledCategories || enabledCategories.maintainability || enabledCategories.style) patternSets.push([...QUALITY_PATTERNS]);
   const allPatterns = patternSets.flat();
-  
+
   for (const patternRule of allPatterns) {
     const regex = new RegExp(patternRule.pattern.source, patternRule.pattern.flags);
     let execResult;
 
     while ((execResult = regex.exec(code)) !== null) {
-      // Find line number
       const beforeMatch = code.substring(0, execResult.index);
       const lineNum = (beforeMatch.match(/\n/g) || []).length + 1;
 
-      // Get code snippet
       const lineStart = Math.max(0, lineNum - 2);
       const lineEnd = Math.min(lines.length, lineNum + 1);
       const codeSnippet = lines.slice(lineStart, lineEnd).join('\n');
-      
+
       findings.push({
         ruleId: patternRule.id,
         severity: patternRule.severity,
@@ -282,7 +274,7 @@ function runStaticAnalysis(code: string, language: string, enabledCategories?: E
         message: patternRule.message,
         lineStart: lineNum,
         lineEnd: lineNum,
-        codeSnippet: codeSnippet,
+        codeSnippet,
         suggestion: patternRule.suggestion,
         explanation: patternRule.explanation,
         documentation: patternRule.documentation,
@@ -291,50 +283,24 @@ function runStaticAnalysis(code: string, language: string, enabledCategories?: E
     }
   }
 
-  // Calculate complexity
-  const complexityFindings = analyzeComplexity(code, lines);
-  findings.push(...complexityFindings);
-
-  // Check for long functions
-  const longFunctionFindings = analyzeLongFunctions(code, lines, language);
-  findings.push(...longFunctionFindings);
-
-  return findings;
-}
-
-function analyzeComplexity(code: string, lines: string[]) {
-  const findings: StaticFinding[] = [];
-  
-  // Count decision points (simplified cyclomatic complexity)
+  // Complexity analysis
   const decisionPatterns = [
-    /\bif\s*\(/g,
-    /\belse\s+if\s*\(/g,
-    /\bfor\s*\(/g,
-    /\bwhile\s*\(/g,
-    /\bswitch\s*\(/g,
-    /\bcase\s+/g,
-    /\bcatch\s*\(/g,
-    /\?\s*[^:]+\s*:/g,
-    /&&/g,
-    /\|\|/g
+    /\bif\s*\(/g, /\belse\s+if\s*\(/g, /\bfor\s*\(/g, /\bwhile\s*\(/g,
+    /\bswitch\s*\(/g, /\bcase\s+/g, /\bcatch\s*\(/g, /\?\s*[^:]+\s*:/g,
+    /&&/g, /\|\|/g
   ];
-
   let complexity = 1;
   for (const pattern of decisionPatterns) {
     const matches = code.match(pattern);
-    if (matches) {
-      complexity += matches.length;
-    }
+    if (matches) complexity += matches.length;
   }
-
   if (complexity > 15) {
     findings.push({
       ruleId: 'high-complexity',
       severity: complexity > 25 ? 'error' : 'warning',
       category: 'maintainability',
       message: `High cyclomatic complexity detected (${complexity})`,
-      lineStart: 1,
-      lineEnd: lines.length,
+      lineStart: 1, lineEnd: lines.length,
       codeSnippet: '',
       suggestion: 'Consider breaking down complex logic into smaller, focused functions.',
       explanation: 'High cyclomatic complexity makes code harder to test, understand, and maintain.',
@@ -343,38 +309,26 @@ function analyzeComplexity(code: string, lines: string[]) {
     });
   }
 
-  return findings;
-}
-
-function analyzeLongFunctions(code: string, lines: string[], language: string) {
-  const findings: StaticFinding[] = [];
-  
-  // Simple regex for function detection (works for JS/TS/Python-ish)
+  // Long function analysis
   const functionPattern = /(?:function\s+\w+|(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\(|def\s+\w+|public\s+(?:static\s+)?(?:async\s+)?\w+\s*\()/g;
-  
   const functionStarts: number[] = [];
   let execResult;
-
   while ((execResult = functionPattern.exec(code)) !== null) {
     const beforeMatch = code.substring(0, execResult.index);
     const lineNum = (beforeMatch.match(/\n/g) || []).length + 1;
     functionStarts.push(lineNum);
   }
-
-  // Check function lengths
   for (let i = 0; i < functionStarts.length; i++) {
     const start = functionStarts[i];
     const end = i < functionStarts.length - 1 ? functionStarts[i + 1] - 1 : lines.length;
     const length = end - start + 1;
-    
     if (length > 50) {
       findings.push({
         ruleId: 'long-function',
         severity: length > 100 ? 'warning' : 'info',
         category: 'maintainability',
         message: `Long function detected (${length} lines)`,
-        lineStart: start,
-        lineEnd: end,
+        lineStart: start, lineEnd: end,
         codeSnippet: lines.slice(start - 1, Math.min(start + 4, end)).join('\n'),
         suggestion: 'Consider breaking this function into smaller, focused functions.',
         explanation: 'Long functions are harder to understand, test, and maintain.',
@@ -387,9 +341,13 @@ function analyzeLongFunctions(code: string, lines: string[], language: string) {
   return findings;
 }
 
+// ---------------------------------------------------------------------------
+// AI review (same logic as ../route.ts)
+// ---------------------------------------------------------------------------
+
 async function getAIReview(code: string, language: string, staticFindings: StaticFinding[], preset: ReviewPreset = 'full'): Promise<AIReviewResponse> {
   const zai = await ZAI.create();
-  
+
   const presetFocus = PRESET_FOCUS[preset];
   const systemPrompt = `You are an expert code reviewer with deep knowledge of software engineering best practices. Your task is to review code and provide actionable, educational feedback.
 
@@ -448,7 +406,7 @@ Respond with valid JSON only.`;
   });
 
   const response = completion.choices[0]?.message?.content || '';
-  
+
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -468,175 +426,175 @@ Respond with valid JSON only.`;
   };
 }
 
+// ---------------------------------------------------------------------------
+// Streaming POST handler
+// ---------------------------------------------------------------------------
+
 export async function POST(request: NextRequest) {
-  try {
-    const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'anonymous';
-    const rateLimit = checkRateLimit(clientIp);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000)) } }
-      );
-    }
+  const sc = createStreamController();
 
-    const body = await request.json();
-    const { code, language, fileName, preset: rawPreset, enabledCategories, saveHistory = true } = body;
-    const preset: ReviewPreset = VALID_PRESETS.includes(rawPreset) ? rawPreset : 'full';
-
-    if (!code || typeof code !== 'string' || !language || typeof language !== 'string') {
-      return NextResponse.json({ error: 'Code and language are required' }, { status: 400 });
-    }
-
-    if (code.length > MAX_CODE_LENGTH) {
-      return NextResponse.json(
-        { error: `Code exceeds maximum length of ${MAX_CODE_LENGTH} characters` },
-        { status: 400 }
-      );
-    }
-
-    if (!VALID_LANGUAGES.includes(language as typeof VALID_LANGUAGES[number])) {
-      return NextResponse.json(
-        { error: `Unsupported language. Supported: ${VALID_LANGUAGES.join(', ')}` },
-        { status: 400 }
-      );
-    }
-
-    // Check cache
-    const cacheKey = reviewCache.generateKey(code, language, preset);
-    const cached = reviewCache.get(cacheKey);
-    if (cached) {
-      return NextResponse.json(cached);
-    }
-
-    // Run static analysis
-    const staticFindings = runStaticAnalysis(code, language, enabledCategories);
-    
-    // Get AI review
-    const aiReview = await getAIReview(code, language, staticFindings, preset);
-    
-    // Combine findings
-    const allFindings: StaticFinding[] = [
-      ...staticFindings,
-      ...(aiReview.findings || []).map((f: AIFinding, index: number) => ({
-        ruleId: `ai-${f.category}-${index}`,
-        severity: f.severity,
-        category: f.category,
-        message: f.message,
-        lineStart: f.lineStart || 1,
-        lineEnd: f.lineEnd || f.lineStart || 1,
-        codeSnippet: '',
-        suggestion: f.suggestion || '',
-        explanation: f.explanation || '',
-        documentation: '',
-        autoFixable: false
-      }))
-    ];
-
-    // Deduplicate findings
-    const uniqueFindings = allFindings.filter((finding, index, self) =>
-      index === self.findIndex(f => 
-        f.message === finding.message && 
-        f.lineStart === finding.lineStart
-      )
-    );
-
-    // Calculate counts
-    const counts = {
-      critical: uniqueFindings.filter(f => f.severity === 'critical').length,
-      error: uniqueFindings.filter(f => f.severity === 'error').length,
-      warning: uniqueFindings.filter(f => f.severity === 'warning').length,
-      info: uniqueFindings.filter(f => f.severity === 'info').length
-    };
-
-    // Use AI quality score directly — the AI already sees static findings as context,
-    // so subtracting again would double-penalize
-    const qualityScore = Math.max(0, Math.min(100, aiReview.qualityScore));
-
-    // Determine pass/fail
-    const passed = counts.critical === 0 && counts.error === 0;
-
-    const result = {
-      summary: aiReview.summary || 'Code review completed',
-      positiveAspects: aiReview.positiveAspects || [],
-      qualityScore,
-      totalLines: code.split('\n').length,
-      passed,
-      counts,
-      findings: uniqueFindings,
-      testingSuggestions: aiReview.testingSuggestions || []
-    };
-
-    // Cache the result
-    reviewCache.set(cacheKey, result);
-
-    // Save to database if requested
-    if (saveHistory) {
-      const review = await db.codeReview.create({
-        data: {
-          codeContent: code,
-          language,
-          fileName: fileName || 'untitled',
-          summary: result.summary,
-          positiveAspects: JSON.stringify(result.positiveAspects),
-          qualityScore: result.qualityScore,
-          totalLines: result.totalLines,
-          passed: result.passed,
-          criticalCount: counts.critical,
-          errorCount: counts.error,
-          warningCount: counts.warning,
-          infoCount: counts.info,
-          findings: {
-            create: uniqueFindings.map(f => ({
-              ruleId: f.ruleId,
-              severity: f.severity,
-              category: f.category,
-              message: f.message,
-              lineStart: f.lineStart,
-              lineEnd: f.lineEnd,
-              codeSnippet: f.codeSnippet || '',
-              suggestion: f.suggestion || '',
-              explanation: f.explanation || '',
-              documentation: f.documentation || '',
-              autoFixable: f.autoFixable || false
-            }))
-          }
-        }
-      });
-      
-      return NextResponse.json({ ...result, reviewId: review.id });
-    }
-
-    return NextResponse.json(result);
-  } catch (error) {
-    logger.error('Code review error', { error: String(error) });
-    return NextResponse.json(
-      { error: 'Failed to perform code review' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '10') || 10), MAX_LIMIT);
-    
-    const reviews = await db.codeReview.findMany({
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        findings: {
-          orderBy: { severity: 'asc' }
-        }
+  // Run the review pipeline asynchronously, streaming events as we go.
+  const run = async () => {
+    try {
+      // --- Rate limiting ---
+      const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'anonymous';
+      const rateLimit = checkRateLimit(clientIp);
+      if (!rateLimit.allowed) {
+        sc.sendError('Rate limit exceeded. Please try again later.');
+        sc.close();
+        return;
       }
-    });
 
-    return NextResponse.json({ reviews });
-  } catch (error) {
-    logger.error('Failed to fetch reviews', { error: String(error) });
-    return NextResponse.json(
-      { error: 'Failed to fetch review history' },
-      { status: 500 }
-    );
-  }
+      sc.sendStatus('Validating request...');
+
+      const body = await request.json();
+      const { code, language, fileName, preset: rawPreset, enabledCategories, saveHistory = true } = body;
+      const preset: ReviewPreset = VALID_PRESETS.includes(rawPreset) ? rawPreset : 'full';
+
+      // --- Validation ---
+      if (!code || typeof code !== 'string' || !language || typeof language !== 'string') {
+        sc.sendError('Code and language are required');
+        sc.close();
+        return;
+      }
+
+      if (code.length > MAX_CODE_LENGTH) {
+        sc.sendError(`Code exceeds maximum length of ${MAX_CODE_LENGTH} characters`);
+        sc.close();
+        return;
+      }
+
+      if (!VALID_LANGUAGES.includes(language as typeof VALID_LANGUAGES[number])) {
+        sc.sendError(`Unsupported language. Supported: ${VALID_LANGUAGES.join(', ')}`);
+        sc.close();
+        return;
+      }
+
+      // --- Cache check ---
+      const cacheKey = reviewCache.generateKey(code, language, preset);
+      const cached = reviewCache.get(cacheKey);
+      if (cached) {
+        sc.sendStatus('Returning cached result...');
+        sc.sendResult(cached as object);
+        sc.close();
+        return;
+      }
+
+      // --- Static analysis ---
+      sc.sendStatus('Running static analysis...');
+      const staticFindings = runStaticAnalysis(code, language, enabledCategories);
+      sc.sendStatus(`Static analysis complete. Found ${staticFindings.length} issue(s).`);
+
+      // --- AI review ---
+      sc.sendStatus('Waiting for AI review...');
+      const aiReview = await getAIReview(code, language, staticFindings, preset);
+      sc.sendStatus('AI review complete. Building results...');
+
+      // --- Combine findings ---
+      const allFindings: StaticFinding[] = [
+        ...staticFindings,
+        ...(aiReview.findings || []).map((f: AIFinding, index: number) => ({
+          ruleId: `ai-${f.category}-${index}`,
+          severity: f.severity,
+          category: f.category,
+          message: f.message,
+          lineStart: f.lineStart || 1,
+          lineEnd: f.lineEnd || f.lineStart || 1,
+          codeSnippet: '',
+          suggestion: f.suggestion || '',
+          explanation: f.explanation || '',
+          documentation: '',
+          autoFixable: false
+        }))
+      ];
+
+      // Deduplicate
+      const uniqueFindings = allFindings.filter((finding, index, self) =>
+        index === self.findIndex(f =>
+          f.message === finding.message &&
+          f.lineStart === finding.lineStart
+        )
+      );
+
+      const counts = {
+        critical: uniqueFindings.filter(f => f.severity === 'critical').length,
+        error: uniqueFindings.filter(f => f.severity === 'error').length,
+        warning: uniqueFindings.filter(f => f.severity === 'warning').length,
+        info: uniqueFindings.filter(f => f.severity === 'info').length
+      };
+
+      const qualityScore = Math.max(0, Math.min(100, aiReview.qualityScore));
+      const passed = counts.critical === 0 && counts.error === 0;
+
+      const result = {
+        summary: aiReview.summary || 'Code review completed',
+        positiveAspects: aiReview.positiveAspects || [],
+        qualityScore,
+        totalLines: code.split('\n').length,
+        passed,
+        counts,
+        findings: uniqueFindings,
+        testingSuggestions: aiReview.testingSuggestions || []
+      };
+
+      // --- Cache the result ---
+      reviewCache.set(cacheKey, result);
+
+      // --- Persist to database ---
+      if (saveHistory) {
+        sc.sendStatus('Saving review to history...');
+        const review = await db.codeReview.create({
+          data: {
+            codeContent: code,
+            language,
+            fileName: fileName || 'untitled',
+            summary: result.summary,
+            positiveAspects: JSON.stringify(result.positiveAspects),
+            qualityScore: result.qualityScore,
+            totalLines: result.totalLines,
+            passed: result.passed,
+            criticalCount: counts.critical,
+            errorCount: counts.error,
+            warningCount: counts.warning,
+            infoCount: counts.info,
+            findings: {
+              create: uniqueFindings.map(f => ({
+                ruleId: f.ruleId,
+                severity: f.severity,
+                category: f.category,
+                message: f.message,
+                lineStart: f.lineStart,
+                lineEnd: f.lineEnd,
+                codeSnippet: f.codeSnippet || '',
+                suggestion: f.suggestion || '',
+                explanation: f.explanation || '',
+                documentation: f.documentation || '',
+                autoFixable: f.autoFixable || false
+              }))
+            }
+          }
+        });
+
+        sc.sendResult({ ...result, reviewId: review.id });
+      } else {
+        sc.sendResult(result);
+      }
+    } catch (error) {
+      logger.error('Streaming code review error', { error: String(error) });
+      sc.sendError('Failed to perform code review');
+    } finally {
+      sc.close();
+    }
+  };
+
+  // Kick off the async pipeline (do not await — the stream is returned immediately)
+  run();
+
+  return new NextResponse(sc.stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }

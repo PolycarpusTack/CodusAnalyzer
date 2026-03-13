@@ -1,0 +1,82 @@
+{
+  "name": "code-review-air",
+  "displayName": "AI Code Review (AIR)",
+  "description": "AI-powered code review directly in VS Code, powered by Mediagenix AIR",
+  "version": "0.1.0",
+  "publisher": "mediagenix-air",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onCommand:codeReviewAir.reviewFile",
+    "onCommand:codeReviewAir.reviewSelection"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeReviewAir.reviewFile",
+        "title": "Review Current File",
+        "category": "AI Code Review"
+      },
+      {
+        "command": "codeReviewAir.reviewSelection",
+        "title": "Review Selection",
+        "category": "AI Code Review"
+      }
+    ],
+    "configuration": {
+      "title": "AI Code Review (AIR)",
+      "properties": {
+        "codeReviewAir.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "URL of the Code Review API server"
+        },
+        "codeReviewAir.preset": {
+          "type": "string",
+          "default": "full",
+          "enum": [
+            "full",
+            "security",
+            "performance",
+            "maintainability"
+          ],
+          "description": "Review preset to use"
+        },
+        "codeReviewAir.autoReview": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically review files on save"
+        }
+      }
+    },
+    "languages": [
+      { "id": "javascript" },
+      { "id": "typescript" },
+      { "id": "python" },
+      { "id": "java" },
+      { "id": "go" },
+      { "id": "rust" },
+      { "id": "csharp" },
+      { "id": "php" },
+      { "id": "ruby" }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "eslint": "^8.56.0"
+  }
+}
